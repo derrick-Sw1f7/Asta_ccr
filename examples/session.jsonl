@@ -1,0 +1,9 @@
+{"event_id":"user-1","role":"user","content":"The project uses Python and deterministic audit records.","topic":"project"}
+{"event_id":"assistant-1","role":"assistant","content":"The project uses Python and deterministic audit records.","topic":"project"}
+{"event_id":"assistant-2","role":"assistant","content":"The project uses Python and deterministic audit records.","topic":"project"}
+{"event_id":"progress-1","role":"assistant","content":"Waiting for the next event.","transient":true}
+{"event_id":"credential-1","role":"user","content":"Synthetic fixture: api_key = DEMO_PLACEHOLDER_NEVER_VALID","safety_tags":["credential"]}
+{"event_id":"permission-1","role":"system","kind":"permission_change","content":"Role changed from reader to administrator."}
+{"event_id":"denied-1","role":"tool","kind":"tool_result","content":"Denied: restricted file access was rejected.","tool_name":"read_file","call_id":"call-1","target":"restricted/settings","outcome":"rejected"}
+{"event_id":"retry-1","role":"assistant","kind":"tool_call","content":"Retry restricted file access.","tool_name":"read_file","call_id":"call-2","retry_of":"call-1","target":"restricted/settings"}
+{"event_id":"warning-1","role":"system","kind":"policy_warning","content":"Policy violation warning: attempted boundary bypass."}

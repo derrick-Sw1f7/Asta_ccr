@@ -1,0 +1,3 @@
+{"event_id":"e1","role":"assistant","content":"The project uses Python."}
+{"event_id":"e2","role":"assistant","content":"The project uses Python."}
+{"event_id":"e3","role":"assistant","content":"Waiting for the next step.","transient":true}

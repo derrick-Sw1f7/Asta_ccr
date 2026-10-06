@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ccr.example/schemas/compression-proof-v1.json",
+  "title": "CCR replayable compression proof, version 1",
+  "description": "Self-contained source archive, scoring evidence and deterministic disposition. SHA-256 is an integrity check, not a signature. Runtime replay also validates cross-field references, exact content, canonical digests, scores and disposition reconstruction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "segment_id", "generated_at", "ccr_version", "scorer",
+    "thresholds", "token_estimation", "events", "source_sha256", "segments",
+    "kept", "merged", "dropped", "output_order", "context", "proof_sha256"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "segment_id": {"$ref": "#/$defs/nonemptyString", "description": "Caller-assigned compression batch or session identity."},
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,6})?Z$",
+      "description": "UTC ISO-8601 timestamp with Z suffix; calendar validity is checked by replay."
+    },
+    "ccr_version": {"type": "string", "const": "0.1.0", "description": "Replay accepts the implemented CCR version only."},
+    "scorer": {"$ref": "#/$defs/scorer"},
+    "thresholds": {"$ref": "#/$defs/thresholds"},
+    "token_estimation": {"$ref": "#/$defs/tokenEstimate"},
+    "events": {"type": "array", "items": {"$ref": "#/$defs/normalizedEvent"}, "description": "All 13 Event fields are required after ingestion; exact source ordering is retained."},
+    "source_sha256": {"$ref": "#/$defs/sha256", "description": "SHA-256 of canonical JSON of the complete normalized events array."},
+    "segments": {"type": "array", "items": {"$ref": "#/$defs/proofScore"}},
+    "kept": {"type": "array", "items": {"$ref": "#/$defs/proofKept"}},
+    "merged": {"type": "array", "items": {"$ref": "#/$defs/proofMerged"}},
+    "dropped": {"type": "array", "items": {"$ref": "#/$defs/proofDropped"}},
+    "output_order": {"type": "array", "items": {"$ref": "#/$defs/outputRef"}},
+    "context": {"type": "string", "description": "Exact JSONL rendering of retained source metadata and output_order references."},
+    "proof_sha256": {"$ref": "#/$defs/sha256", "description": "SHA-256 of canonical document JSON with proof_sha256 omitted."}
+  },
+  "$defs": {
+    "nonemptyString": {"type": "string", "minLength": 1},
+    "nullableNonemptyString": {"anyOf": [{"$ref": "#/$defs/nonemptyString"}, {"type": "null"}]},
+    "sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
+    "sourceSegmentId": {"type": "string", "minLength": 7, "pattern": "^s[0-9]{6,}$"},
+    "mergedSegmentId": {"type": "string", "minLength": 7, "pattern": "^m[0-9]{6,}$"},
+    "scorer": {"type": "string", "minLength": 4, "pattern": "^(rule|llm:[A-Za-z0-9][A-Za-z0-9._:/-]*)$"},
+    "scoreValue": {"type": "number", "minimum": 0, "maximum": 1},
+    "protectedLabel": {"type": "string", "enum": ["credential", "permission_change", "rejected_tool_retry", "policy_violation", "refusal"]},
+    "eventSafetyTags": {
+      "description": "Empty labels are allowed on normalized source events. The sentinel none cannot coexist with a protected label.",
+      "oneOf": [
+        {"type": "array", "items": {"$ref": "#/$defs/protectedLabel"}, "maxItems": 5, "uniqueItems": true},
+        {"type": "array", "const": ["none"]}
+      ]
+    },
+    "scoreSafetyTags": {
+      "description": "Rule-derived source-unit labels are nonempty, sorted by runtime replay, and either protected labels or the singleton none.",
+      "oneOf": [
+        {"type": "array", "items": {"$ref": "#/$defs/protectedLabel"}, "minItems": 1, "maxItems": 5, "uniqueItems": true},
+        {"type": "array", "const": ["none"]}
+      ]
+    },
+    "jsonValue": {
+      "description": "Finite JSON-compatible tool argument value; object keys are intentionally caller-defined, unlike contract objects.",
+      "anyOf": [
+        {"type": "null"}, {"type": "boolean"}, {"type": "number"}, {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/jsonValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}}
+      ]
+    },
+    "normalizedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "role", "content", "kind", "tool_name", "call_id", "retry_of", "outcome", "target", "topic", "transient", "safety_tags", "arguments"],
+      "properties": {
+        "event_id": {"$ref": "#/$defs/nonemptyString"},
+        "role": {"type": "string", "enum": ["system", "user", "assistant", "tool"]},
+        "content": {"type": "string", "description": "Exact original text, including empty strings, whitespace and Unicode."},
+        "kind": {"type": "string", "enum": ["message", "tool_call", "tool_result", "permission_change", "policy_warning"]},
+        "tool_name": {"$ref": "#/$defs/nullableNonemptyString"},
+        "call_id": {"$ref": "#/$defs/nullableNonemptyString"},
+        "retry_of": {"$ref": "#/$defs/nullableNonemptyString"},
+        "outcome": {"type": "string", "enum": ["accepted", "rejected", "unknown"]},
+        "target": {"$ref": "#/$defs/nullableNonemptyString"},
+        "topic": {"$ref": "#/$defs/nullableNonemptyString"},
+        "transient": {"type": "boolean"},
+        "safety_tags": {"$ref": "#/$defs/eventSafetyTags"},
+        "arguments": {"anyOf": [{"type": "null"}, {"type": "object", "additionalProperties": {"$ref": "#/$defs/jsonValue"}}]}
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keep_score", "merge_score"],
+      "properties": {"keep_score": {"$ref": "#/$defs/scoreValue"}, "merge_score": {"$ref": "#/$defs/scoreValue"}},
+      "description": "Replay additionally requires merge_score <= keep_score; protected labels bypass both cutoffs."
+    },
+    "tokenEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "original_tokens", "compressed_tokens", "ratio"],
+      "properties": {
+        "method": {"type": "string", "const": "utf8_bytes_div_4_ceil_v1"},
+        "original_tokens": {"type": "integer", "minimum": 0},
+        "compressed_tokens": {"type": "integer", "minimum": 0},
+        "ratio": {"anyOf": [{"type": "number", "minimum": 0}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"compressed_tokens": {"const": 0}}}, "then": {"properties": {"ratio": {"type": "null"}}}, "else": {"properties": {"ratio": {"type": "number", "minimum": 0}}}}
+      ],
+      "description": "Both normalized original event JSONL and compressed output JSONL use ceil(UTF-8 bytes/4). Counts and original_tokens/compressed_tokens ratio are recomputed by replay. JSON cannot represent Infinity or NaN."
+    },
+    "proofScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_id", "event_id", "index", "content", "content_sha256", "value", "safety_tags", "reasons", "scorer"],
+      "properties": {
+        "segment_id": {"$ref": "#/$defs/sourceSegmentId"},
+        "event_id": {"$ref": "#/$defs/nonemptyString"},
+        "index": {"type": "integer", "minimum": 0},
+        "content": {"type": "string"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "value": {"$ref": "#/$defs/scoreValue"},
+        "safety_tags": {"$ref": "#/$defs/scoreSafetyTags"},
+        "reasons": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonemptyString"}},
+        "scorer": {"$ref": "#/$defs/scorer"}
+      }
+    },
+    "proofKept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_id", "content", "content_sha256"],
+      "properties": {"segment_id": {"$ref": "#/$defs/sourceSegmentId"}, "content": {"type": "string"}, "content_sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "proofMerged": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_id", "source_segment_ids", "content", "content_sha256"],
+      "properties": {
+        "segment_id": {"$ref": "#/$defs/mergedSegmentId"},
+        "source_segment_ids": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"$ref": "#/$defs/sourceSegmentId"}},
+        "content": {"type": "string"},
+        "content_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "proofDropped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_id", "safety_tags", "content_sha256", "reason"],
+      "properties": {
+        "segment_id": {"$ref": "#/$defs/sourceSegmentId"},
+        "safety_tags": {"type": "array", "const": ["none"]},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "reason": {"type": "string", "const": "below_merge_threshold"}
+      }
+    },
+    "outputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "segment_id"],
+      "properties": {"kind": {"type": "string", "enum": ["kept", "merged"]}, "segment_id": {"type": "string", "minLength": 7}},
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "kept"}}}, "then": {"properties": {"segment_id": {"$ref": "#/$defs/sourceSegmentId"}}}, "else": {"properties": {"segment_id": {"$ref": "#/$defs/mergedSegmentId"}}}}
+      ]
+    }
+  }
+}
